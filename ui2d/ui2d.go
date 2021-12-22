@@ -2,8 +2,8 @@ package ui2d
 
 import (
 	"bufio"
-	"fmt"
 	"image/png"
+	"math/rand"
 	"os"
 	"strconv"
 	"strings"
@@ -13,13 +13,15 @@ import (
 )
 
 const (
-	WinWidth  int32 = 1280
-	WinHeight int32 = 720
+	WinWidth      int32 = 1280
+	WinHeight     int32 = 720
+	TextureWidth  int32 = 32
+	TextureHeight int32 = 32
 )
 
 var renderer *sdl.Renderer
 var textureAtlas *sdl.Texture
-var textureIndex map[game.Tile]sdl.Rect
+var textureIndex map[game.Tile][]sdl.Rect
 
 func init() {
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
@@ -44,7 +46,38 @@ type UI2d struct {
 }
 
 func (ui *UI2d) Draw(level *game.Level) {
-	renderer.Copy(textureAtlas, nil, nil)
+	rand.Seed(1)
+
+	for y, row := range level.Map {
+		for x, tile := range row {
+			if tile != game.Blank {
+				srcRects := textureIndex[tile]
+				srcRect := srcRects[rand.Intn(len(srcRects))]
+				dstRect := sdl.Rect{
+					X: int32(x) * TextureWidth,
+					Y: int32(y) * TextureHeight,
+					W: TextureWidth,
+					H: TextureHeight,
+				}
+				renderer.Copy(textureAtlas, &srcRect, &dstRect)
+			}
+		}
+	}
+
+	srcRect := sdl.Rect{
+		X: 21 * TextureWidth,
+		Y: 59 * TextureWidth,
+		W: TextureWidth,
+		H: TextureHeight,
+	}
+	dstRect := sdl.Rect{
+		X: int32(level.Player.X) * TextureWidth,
+		Y: int32(level.Player.Y) * TextureHeight,
+		W: TextureWidth,
+		H: TextureHeight,
+	}
+	renderer.Copy(textureAtlas, &srcRect, &dstRect)
+
 	renderer.Present()
 	sdl.Delay(5000)
 }
@@ -95,6 +128,8 @@ func imgFileToTexture(fileName string) *sdl.Texture {
 }
 
 func loadTextureIndex() {
+	textureIndex = make(map[game.Tile][]sdl.Rect)
+
 	infile, err := os.Open("ui2d/assets/atlas-index.txt")
 	if err != nil {
 		panic(err)
@@ -106,16 +141,35 @@ func loadTextureIndex() {
 		line = strings.TrimSpace(line)
 		tileRune := game.Tile(line[0])
 		xy := line[1:]
-		splitXY := strings.Split(xy, ",")
-		x, err := strconv.ParseInt(strings.TrimSpace(splitXY[0]), 10, 64)
+		splitXYC := strings.Split(xy, ",")
+		x, err := strconv.ParseInt(strings.TrimSpace(splitXYC[0]), 10, 64)
 		if err != nil {
 			panic(err)
 		}
-		y, err := strconv.ParseInt(strings.TrimSpace(splitXY[1]), 10, 64)
+		y, err := strconv.ParseInt(strings.TrimSpace(splitXYC[1]), 10, 64)
 		if err != nil {
 			panic(err)
+		}
+		variationCount, err := strconv.ParseInt(strings.TrimSpace(splitXYC[2]), 10, 64)
+		if err != nil {
+			panic(err)
+		}
+		var rects []sdl.Rect
+		for i := 0; int64(i) < variationCount; i++ {
+			rect := sdl.Rect{
+				X: int32(x) * TextureWidth,
+				Y: int32(y) * TextureHeight,
+				W: TextureWidth,
+				H: TextureHeight,
+			}
+			rects = append(rects, rect)
+			x++
+			if x > 62 {
+				x = 0
+				y++
+			}
 		}
 
-		fmt.Println(tileRune, x, y)
+		textureIndex[tileRune] = rects
 	}
 }
