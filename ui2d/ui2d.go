@@ -22,6 +22,10 @@ const (
 var renderer *sdl.Renderer
 var textureAtlas *sdl.Texture
 var textureIndex map[game.Tile][]sdl.Rect
+var keyboardState []uint8
+var prevKeyboardState []uint8
+var centerX int
+var centerY int
 
 func init() {
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
@@ -40,22 +44,48 @@ func init() {
 
 	textureAtlas = imgFileToTexture("ui2d/assets/tiles.png")
 	loadTextureIndex()
+
+	keyboardState = sdl.GetKeyboardState()
+	prevKeyboardState = make([]uint8, len(keyboardState))
+	copy(prevKeyboardState, keyboardState)
+
+	centerX = -1
+	centerY = -1
 }
 
 type UI2d struct {
 }
 
 func (ui *UI2d) Draw(level *game.Level) {
-	rand.Seed(1)
+	if centerX == -1 && centerY == -1 {
+		centerX = level.Player.X
+		centerY = level.Player.Y
+	}
 
+	limit := 5
+	if level.Player.X > centerX+limit {
+		centerX++
+	} else if level.Player.X < centerX-limit {
+		centerX--
+	} else if level.Player.Y > centerY+limit {
+		centerY++
+	} else if level.Player.Y < centerY-limit {
+		centerY--
+	}
+
+	offsetX := WinWidth/2 - int32(centerX)*TextureWidth
+	offsetY := WinHeight/2 - int32(centerY)*TextureHeight
+
+	renderer.Clear()
+	rand.Seed(1)
 	for y, row := range level.Map {
 		for x, tile := range row {
 			if tile != game.Blank {
 				srcRects := textureIndex[tile]
 				srcRect := srcRects[rand.Intn(len(srcRects))]
 				dstRect := sdl.Rect{
-					X: int32(x) * TextureWidth,
-					Y: int32(y) * TextureHeight,
+					X: int32(x)*TextureWidth + offsetX,
+					Y: int32(y)*TextureHeight + offsetY,
 					W: TextureWidth,
 					H: TextureHeight,
 				}
@@ -71,15 +101,14 @@ func (ui *UI2d) Draw(level *game.Level) {
 		H: TextureHeight,
 	}
 	dstRect := sdl.Rect{
-		X: int32(level.Player.X) * TextureWidth,
-		Y: int32(level.Player.Y) * TextureHeight,
+		X: int32(level.Player.X)*TextureWidth + offsetX,
+		Y: int32(level.Player.Y)*TextureHeight + offsetY,
 		W: TextureWidth,
 		H: TextureHeight,
 	}
 	renderer.Copy(textureAtlas, &srcRect, &dstRect)
 
 	renderer.Present()
-	sdl.Delay(5000)
 }
 
 func imgFileToTexture(fileName string) *sdl.Texture {
@@ -171,5 +200,41 @@ func loadTextureIndex() {
 		}
 
 		textureIndex[tileRune] = rects
+	}
+}
+
+func (ui *UI2d) GetInput() *game.Input {
+	for {
+		for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
+			switch event.(type) {
+			case *sdl.QuitEvent:
+				return &game.Input{
+					Typ: game.Quit,
+				}
+			}
+		}
+
+		var input game.Input
+		if keyboardState[sdl.SCANCODE_UP] == 0 && prevKeyboardState[sdl.SCANCODE_UP] != 0 {
+			input.Typ = game.Up
+		}
+		if keyboardState[sdl.SCANCODE_DOWN] == 0 && prevKeyboardState[sdl.SCANCODE_DOWN] != 0 {
+			input.Typ = game.Down
+		}
+		if keyboardState[sdl.SCANCODE_LEFT] == 0 && prevKeyboardState[sdl.SCANCODE_LEFT] != 0 {
+			input.Typ = game.Left
+		}
+		if keyboardState[sdl.SCANCODE_RIGHT] == 0 && prevKeyboardState[sdl.SCANCODE_RIGHT] != 0 {
+			input.Typ = game.Right
+		}
+		if keyboardState[sdl.SCANCODE_ESCAPE] == 0 && prevKeyboardState[sdl.SCANCODE_ESCAPE] != 0 {
+			input.Typ = game.Quit
+		}
+
+		copy(prevKeyboardState, keyboardState)
+
+		if input.Typ != game.None {
+			return &input
+		}
 	}
 }
